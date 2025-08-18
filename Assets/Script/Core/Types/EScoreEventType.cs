@@ -1,0 +1,1 @@
+public enum EScoreEventType { Pop, Drop }

@@ -1,0 +1,62 @@
+# --- Unity (generated / cache) ---
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+UserSettings/
+*.stacktrace
+sysinfo.txt
+
+# Lightmap / GI cache (옵션: 대용량)
+**/LightmapSnapshot*/
+**/GICache/
+
+# Addressables 빌드 산출물(소스는 포함)
+**/ServerData/**
+**/AddressablesBuildPath/**
+**/AddressableAssetsData/*/bin*/**
+
+# Unity Recorder 기본 출력(있다면)
+Recordings/
+
+# --- Visual Studio / Rider / VSCode ---
+.vs/
+.idea/
+*.sln.DotSettings
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# --- C# / MSBuild generated ---
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# --- Crash & profiling ---
+*.dmp
+*.memsnap
+*.psess
+*.vsp
+*.vspx
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Unity Cloud / Collaborate(미사용 시) ---
+.collabignore

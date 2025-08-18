@@ -1,0 +1,1 @@
+public enum EGameState { None, Ready, Playing, GameOver }

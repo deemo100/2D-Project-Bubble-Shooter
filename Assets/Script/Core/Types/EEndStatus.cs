@@ -1,0 +1,1 @@
+public enum EEndStatus { None, Win, Lose }
