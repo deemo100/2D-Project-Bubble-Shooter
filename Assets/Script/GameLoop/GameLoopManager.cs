@@ -1,134 +1,65 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using UnityEngine;
 
 public class GameLoopManager : MonoBehaviour
 {
-    [Header("Refs")]
+    public enum EGameState
+    {
+        Playing,
+        GameOver
+    }
+
+    [SerializeField] private Shooter mShooter;
     [SerializeField] private BubbleGrid mGrid;
-    [SerializeField] private ScoreManager mScore;
-    [SerializeField] private MonoBehaviour mBackendBehaviour; // IBackendService 구현 컴포넌트
+    [SerializeField] private int mTurnsPerDrop = 5;
 
-    [Header("Game Options")]
-    [SerializeField] private string mStageId = "Stage_001";
-    [SerializeField] private string mPlayerId = "Player_Local";
-    [SerializeField] private bool mbUseTimeLimit = false;
-    [SerializeField] private float mTimeLimit = 60f;
+    private int mTurnsTaken = 0;
+    private EGameState mState = EGameState.Playing;
 
-    private IBackendService mBackend;
-    private readonly List<IEndCondition> mEnders = new List<IEndCondition>();
-    private EGameState mState = EGameState.None;
+    public bool IsGameOver => mState == EGameState.GameOver;
 
-    private string mRunId;
-    private float mStartTime;
-    private float mElapsed;
-    private bool mbInitialized;
-
-    public EGameState State => mState;
-    public float RemainingTime => mbUseTimeLimit ? Mathf.Max(0f, mTimeLimit - mElapsed) : float.PositiveInfinity;
-
-    private async void Start()
+    private void Start()
     {
-        mBackend = mBackendBehaviour as IBackendService;
-        if (mBackend == null)
+        if (mShooter != null)
         {
-            // 씬에 LocalBackendService를 안 붙였으면 자동 생성
-            var go = new GameObject("LocalBackendService");
-            mBackend = go.AddComponent<LocalBackendService>();
+            mShooter.OnShotFired += OnShotFired;
         }
-
-        await SafeInitBackend();
-        BuildEndConditions();
-        SetState(EGameState.Ready);
     }
 
-    private async Task SafeInitBackend()
+    private void OnDestroy()
     {
-        try { await mBackend.InitializeAsync(); }
-        catch (System.Exception e) { Debug.LogWarning($"Backend init failed: {e.Message}"); }
-        mbInitialized = true;
-    }
-
-    private void BuildEndConditions()
-    {
-        mEnders.Clear();
-        mEnders.Add(new ClearAllBubblesEnd(mGrid));
-        mEnders.Add(new BottomReachedEnd(mGrid));
-        if (mbUseTimeLimit) mEnders.Add(new TimeOverEnd(() => RemainingTime));
-    }
-
-    private void Update()
-    {
-        if (mState != EGameState.Playing) return;
-
-        mElapsed = Time.time - mStartTime;
-        var status = EvaluateEnd();
-        if (status != EEndStatus.None) EndGame(status);
-    }
-
-    private EEndStatus EvaluateEnd()
-    {
-        for (int i = 0; i < mEnders.Count; i++)
+        if (mShooter != null)
         {
-            var s = mEnders[i].Evaluate();
-            if (s != EEndStatus.None) return s;
+            mShooter.OnShotFired -= OnShotFired;
         }
-        return EEndStatus.None;
     }
 
-    public async void StartGame()
+    private void OnShotFired()
     {
-        if (mState != EGameState.Ready || !mbInitialized) return;
+        if (IsGameOver) return;
 
-        mScore.ResetScore();
-        mElapsed = 0f;
-        mStartTime = Time.time;
-
-        try
+        mTurnsTaken++;
+        if (mTurnsTaken >= mTurnsPerDrop)
         {
-            mRunId = await mBackend.StartRunAsync(new SRunStartData
+            mTurnsTaken = 0;
+            if (mGrid != null)
             {
-                PlayerId = mPlayerId,
-                StageId = mStageId,
-                StartTime = System.DateTime.UtcNow
-            });
+                mGrid.Descend();
+            }
         }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"StartRun failed: {e.Message}");
-            mRunId = System.Guid.NewGuid().ToString("N");
-        }
-
-        SetState(EGameState.Playing);
     }
 
-    private async void EndGame(EEndStatus status)
+    public void TriggerGameOver()
     {
-        if (mState != EGameState.Playing) return;
+        if (IsGameOver) return;
 
-        SetState(EGameState.GameOver);
-        float playTime = Time.time - mStartTime;
+        mState = EGameState.GameOver;
+        Debug.Log("GAME OVER!");
 
-        try
+        if (mGrid != null)
         {
-            await mBackend.SubmitAsync(new SRunEndData
-            {
-                RunId = mRunId,
-                PlayerId = mPlayerId,
-                StageId = mStageId,
-                Score = mScore.CurrentScore,
-                Status = status,
-                PlayTime = playTime,
-                EndTime = System.DateTime.UtcNow
-            });
+            mGrid.ClearAllBubbles();
         }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"Submit failed: {e.Message}");
-        }
-
-        Debug.Log($"GameOver | {status} | Score: {mScore.CurrentScore} | Time: {playTime:0.00}s");
+        
+        // 여기에 나중에 게임오버 UI를 표시하는 로직을 추가할 수 있습니다.
     }
-
-    private void SetState(EGameState s) { mState = s; }
 }

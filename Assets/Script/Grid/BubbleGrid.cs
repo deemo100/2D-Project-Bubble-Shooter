@@ -1,20 +1,45 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+using UnityEngine.Rendering; // 선택: zTest 설정에 사용
+
 public class BubbleGrid : MonoBehaviour
 {
+    [Header("Debug / Gizmos")]
+    [SerializeField] private bool mbDrawGizmos = true;
+    [SerializeField] private bool mbLabelCoords = false;
+    [SerializeField] private bool mbDrawNeighbors = false;
+    [SerializeField] private int mDebugX = -1;
+    [SerializeField] private int mDebugY = -1;
+
+    [SerializeField] private Color mEmptyColor = new Color(0f, 1f, 0f, 0.18f);
+    [SerializeField] private Color mOccupiedColor = new Color(1f, 1f, 1f, 0.35f);
+    [SerializeField] private Color mOutlineColor = new Color(1f, 0.9f, 0.2f, 0.9f);
+    [SerializeField] private Color mNeighborLineColor = new Color(0.2f, 0.8f, 1f, 0.9f);
+    
     [Header("Grid Size")]
-    [SerializeField] private int mWidth = 9;
+    [SerializeField] private int mWidth = 22;
     [SerializeField] private int mHeight = 12;
 
     [Header("Layout")]
     [SerializeField] private float mCellRadius = 0.5f;   // 버블 반지름(육각 격자 기준)
     [SerializeField] private Vector2 mOrigin = Vector2.zero; // 월드 기준 오프셋
+
+    [Header("Game Loop")]
+    [SerializeField] private GameLoopManager mGameLoopManager;
+    [SerializeField] private int mGameOverRow = 11; // 12번째 줄
+
+    // row 0이 홀수 오프셋인지 여부 (false: 짝수 기준, true: 홀수 기준)
+    [SerializeField] private bool mbRowZeroOdd = false;
     
     private BubblePiece[,] mCells;
 
     public int Width => mWidth;
     public int Height => mHeight;
+    public float CellRadius => mCellRadius;
 
     private void Awake()
     {
@@ -25,9 +50,25 @@ public class BubbleGrid : MonoBehaviour
 
     public bool TryPlace(BubblePiece p, int x, int y)
     {
+        Debug.Log($"BubbleGrid.TryPlace received coordinates: (x={x}, y={y})");
         if (!IsInside(x, y) || mCells[x, y] != null) return false;
         mCells[x, y] = p;
-        p.BindGrid(this, x, y);   // ← 필수: 바인딩 + 위치 스냅 + 물리 OFF
+        p.BindGrid(this, x, y);
+
+        if (y >= mGameOverRow)
+        {
+            Debug.Log("Game Over condition met in TryPlace at row " + y);
+            if (mGameLoopManager != null)
+            {
+                Debug.Log("GameLoopManager reference is valid. Triggering game over.");
+                mGameLoopManager.TriggerGameOver();
+            }
+            else
+            {
+                Debug.LogError("GameLoopManager reference on BubbleGrid is NULL! Please assign it in the Inspector.");
+            }
+        }
+        
         return true;
     }
 
@@ -60,10 +101,10 @@ public class BubbleGrid : MonoBehaviour
     }
     public Vector2 CellToWorld(int x, int y)
     {
-        // 가로 간격 = 지름(2r), 세로 간격 = r * sqrt(3)
-        float xOffset = (y % 2 == 0) ? 0f : mCellRadius;
+        int parity = mbRowZeroOdd ? 1 : 0;
+        float xOffset = (((y + parity) % 2) == 0) ? 0f : mCellRadius;
         float wx = mOrigin.x + (x * 2f * mCellRadius) + xOffset;
-        float wy = mOrigin.y - (y * (mCellRadius * 1.73205080757f)); // sqrt(3) ≈ 1.732
+        float wy = mOrigin.y - (y * (mCellRadius * 1.73205080757f)); // sqrt(3)
         return new Vector2(wx, wy);
     }
     
@@ -76,10 +117,11 @@ public class BubbleGrid : MonoBehaviour
         (-1,0),(1,0),(0,-1),(0,1),(1,-1),(1,1)
     };
 
-    public void GetNeighbors(int x, int y, List<(int nx,int ny)> results)
+    public void GetNeighbors(int x, int y, System.Collections.Generic.List<(int nx,int ny)> results)
     {
         results.Clear();
-        var dirs = (y % 2 == 0) ? sEvenRow : sOddRow;
+        int parity = mbRowZeroOdd ? 1 : 0;
+        var dirs = (((y + parity) % 2) == 0) ? sEvenRow : sOddRow;
         for (int i = 0; i < dirs.Length; i++)
         {
             int nx = x + dirs[i].dx;
@@ -122,7 +164,6 @@ public class BubbleGrid : MonoBehaviour
         var visited = new HashSet<(int,int)>();
         var q = new Queue<(int,int)>();
 
-        // 천장 라인에서 시작
         for (int x = 0; x < mWidth; x++)
         {
             if (mCells[x, 0] != null)
@@ -165,7 +206,8 @@ public class BubbleGrid : MonoBehaviour
     public void GetEmptyNeighbors(int x, int y, System.Collections.Generic.List<(int,int)> results)
     {
         results.Clear();
-        var dirs = (y % 2 == 0) ? sEvenRow : sOddRow;
+        int parity = mbRowZeroOdd ? 1 : 0;
+        var dirs = (((y + parity) % 2) == 0) ? sEvenRow : sOddRow;
         for (int i = 0; i < dirs.Length; i++)
         {
             int nx = x + dirs[i].dx;
@@ -175,7 +217,6 @@ public class BubbleGrid : MonoBehaviour
         }
     }
 
-    // 충돌 지점 기준, (cx,cy) 주변에서 '가장 가까운 빈칸' 찾기 (반경 1 → 2 레벨)
     public bool TryFindNearestEmptyAround(int cx, int cy, Vector2 from, out int outX, out int outY)
     {
         outX = outY = -1;
@@ -185,9 +226,8 @@ public class BubbleGrid : MonoBehaviour
         GetEmptyNeighbors(cx, cy, cand);
         SelectNearest(cand, from, ref outX, ref outY, ref best);
     
-        if (outX != -1) return true; // 반경1에서 찾았으면 끝
+        if (outX != -1) return true;
     
-        // 반경 2까지 확장(BFS)
         var visited = new System.Collections.Generic.HashSet<(int,int)>();
         var q = new System.Collections.Generic.Queue<((int x,int y) cell, int depth)>();
         visited.Add((cx, cy));
@@ -199,12 +239,11 @@ public class BubbleGrid : MonoBehaviour
             if (item.depth >= 2) continue;
     
             var neigh = new System.Collections.Generic.List<(int,int)>();
-            GetNeighbors(item.cell.x, item.cell.y, neigh); // 점유된 이웃
+            GetNeighbors(item.cell.x, item.cell.y, neigh);
             foreach (var n in neigh)
             {
                 if (!visited.Add(n)) continue;
     
-                // 이웃의 빈칸 후보만 모아서 평가
                 GetEmptyNeighbors(n.Item1, n.Item2, cand);
                 SelectNearest(cand, from, ref outX, ref outY, ref best);
     
@@ -214,7 +253,6 @@ public class BubbleGrid : MonoBehaviour
     
         return outX != -1;
     
-        // 로컬 함수: 가장 가까운 후보 선택
         void SelectNearest(System.Collections.Generic.List<(int,int)> list, Vector2 origin,
                            ref int bx, ref int by, ref float bdist)
         {
@@ -230,4 +268,116 @@ public class BubbleGrid : MonoBehaviour
             }
         }
     }
+
+    [Header("Bubble Prefab")]
+    [SerializeField] private GameObject mBubblePrefab;
+
+    public void Descend()
+    {
+        mbRowZeroOdd = !mbRowZeroOdd;
+
+        for (int y = Height - 1; y >= 1; y--)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                var p = Get(x, y - 1);
+                mCells[x, y] = p;
+                if (p != null)
+                {
+                    p.BindGrid(this, x, y);
+                    if (y >= mGameOverRow)
+                    {
+                        if (mGameLoopManager != null) mGameLoopManager.TriggerGameOver();
+                        return;
+                    }
+                }
+            }
+        }
+
+        for (int x = 0; x < mWidth; x++)
+        {
+            var go = Instantiate(mBubblePrefab, transform);
+            var piece = go.GetComponentInChildren<BubblePiece>();
+
+            if (piece == null)
+            {
+                Debug.LogError("BubbleGrid: P_Bubble prefab must have a BubblePiece component on itself or a child.");
+                Destroy(go);
+                mCells[x, 0] = null;
+                continue;
+            }
+
+            var color = (EBubbleColor)UnityEngine.Random.Range(0, 4);
+            piece.SetColor(color);
+            mCells[x, 0] = piece;
+            piece.BindGrid(this, x, 0);
+        }
+    }
+
+    public void ClearAllBubbles()
+    {
+        for (int y = 0; y < mHeight; y++)
+        {
+            for (int x = 0; x < mWidth; x++)
+            {
+                if (mCells[x, y] != null)
+                {
+                    Destroy(mCells[x, y].gameObject);
+                    mCells[x, y] = null;
+                }
+            }
+        }
+    }
+    
+#if UNITY_EDITOR
+    private void OnDrawGizmos()
+    {
+        if (!mbDrawGizmos) return;
+
+        if (mCells == null || mCells.Length != mWidth * mHeight)
+            mCells = new BubblePiece[mWidth, mHeight];
+
+        Handles.zTest = CompareFunction.Always;
+
+        for (int y = 0; y < mHeight; y++)
+        for (int x = 0; x < mWidth; x++)
+        {
+            Vector2 wp = CellToWorld(x, y);
+
+            bool bOccupied = mCells[x, y] != null;
+            Handles.color = bOccupied ? mOccupiedColor : mEmptyColor;
+            Handles.DrawSolidDisc(wp, Vector3.forward, mCellRadius * 0.95f);
+
+            Handles.color = mOutlineColor;
+            Handles.DrawWireDisc(wp, Vector3.forward, mCellRadius * 0.98f);
+
+            if (mbLabelCoords)
+            {
+                var style = new GUIStyle(EditorStyles.miniBoldLabel);
+                style.normal.textColor = Color.black;
+                Handles.Label(wp + new Vector2(0f, mCellRadius * 0.1f), $"{x},{y}", style);
+            }
+        }
+
+        if (mbDrawNeighbors && IsInside(mDebugX, mDebugY))
+        {
+            var neigh = new System.Collections.Generic.List<(int,int)>();
+            GetNeighbors(mDebugX, mDebugY, neigh);
+
+            Vector2 center = CellToWorld(mDebugX, mDebugY);
+            Handles.color = mNeighborLineColor;
+            foreach (var n in neigh)
+            {
+                Vector2 to = CellToWorld(n.Item1, n.Item2);
+                Handles.DrawLine(center, to, 2f);
+            }
+
+            Handles.color = Color.red;
+            Handles.DrawWireDisc(center, Vector3.forward, mCellRadius * 1.05f);
+        }
+
+        Handles.color = Color.magenta;
+        Handles.DrawWireDisc(mOrigin, Vector3.forward, mCellRadius * 0.5f);
+    }
+#endif
 }

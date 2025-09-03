@@ -1,4 +1,4 @@
-public class BottomReachedEnd : IEndCondition
+class BottomReachedEnd : IEndCondition
 {
     private readonly BubbleGrid mGrid;
     public BottomReachedEnd(BubbleGrid grid) { mGrid = grid; }
