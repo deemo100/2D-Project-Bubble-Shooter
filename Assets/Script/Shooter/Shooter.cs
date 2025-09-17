@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using System;
+using UnityEngine.EventSystems;
 
 public class Shooter : MonoBehaviour
 {
@@ -16,7 +17,7 @@ public class Shooter : MonoBehaviour
     public EBubbleColor NextBubbleColor => mBubbleQueue.Count > 1 ? mBubbleQueue[1] : default;
     public event Action OnBubbleQueueChanged;
     public event Action OnShotFired;
-    
+
     private readonly List<EBubbleColor> mBubbleQueue = new List<EBubbleColor>();
 
     private void Start()
@@ -31,9 +32,10 @@ public class Shooter : MonoBehaviour
         {
             mBubbleQueue.Add(PickPlayableColor());
         }
+
         OnBubbleQueueChanged?.Invoke();
     }
-    
+
     private bool m_isShotInProgress = false;
 
     private void Update()
@@ -44,7 +46,7 @@ public class Shooter : MonoBehaviour
         }
 
         // 샷이 진행 중이 아닐 때만 발사 가능
-        if (!m_isShotInProgress && Input.GetMouseButtonDown(0))
+        if (!m_isShotInProgress && Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
         {
             if (mBubbleQueue.Count == 0) return;
 
@@ -63,15 +65,31 @@ public class Shooter : MonoBehaviour
             // C#의 클로저(closure) 기능을 사용하여, 생성된 piece 인스턴스에 대한 이벤트 핸들러를 등록합니다.
             // 이렇게 하면 여러 버블이 있어도 정확히 해당 버블의 OnResolved 이벤트에만 반응할 수 있습니다.
             System.Action onResolvedHandler = null;
-            onResolvedHandler = () => {
+            onResolvedHandler = () =>
+            {
                 m_isShotInProgress = false;
                 piece.OnResolved -= onResolvedHandler; // 이벤트 구독 해제 (메모리 누수 방지)
             };
             piece.OnResolved += onResolvedHandler;
 
-            // 1. 대기열의 첫 버블 색상 사용
-            piece.SetColor(CurrentBubbleColor);
-            
+            // 폭탄 모드 확인
+            if (GameLoopManager.Instance.IsBombArmed)
+            {
+                piece.IsBomb = true;
+                GameLoopManager.Instance.ConsumeBomb();
+            }
+            // 로켓 모드 확인
+            else if (GameLoopManager.Instance.IsRocketArmed)
+            {
+                piece.SetAsRocket(); // SetAsRocket() 호출
+                GameLoopManager.Instance.ConsumeRocket();
+            }
+            else
+            {
+                // 1. 대기열의 첫 버블 색상 사용
+                piece.SetColor(CurrentBubbleColor);
+            }
+
             var mp = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             Vector2 dir = ((Vector2)mp - (Vector2)transform.position).normalized;
             piece.SetDynamicForShot(dir * mShotSpeed);
@@ -79,7 +97,7 @@ public class Shooter : MonoBehaviour
             // 2. 대기열 갱신
             mBubbleQueue.RemoveAt(0);
             mBubbleQueue.Add(PickPlayableColor());
-            
+
             // 3. UI 갱신을 위한 이벤트 호출
             OnBubbleQueueChanged?.Invoke();
 

@@ -130,6 +130,20 @@ public class BubbleGrid : MonoBehaviour
                 results.Add((nx, ny));
         }
     }
+
+    public void GetAllNeighbors(int x, int y, System.Collections.Generic.List<(int nx, int ny)> results)
+    {
+        results.Clear();
+        int parity = mbRowZeroOdd ? 1 : 0;
+        var dirs = (((y + parity) % 2) == 0) ? sEvenRow : sOddRow;
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            int nx = x + dirs[i].dx;
+            int ny = y + dirs[i].dy;
+            if (IsInside(nx, ny))
+                results.Add((nx, ny));
+        }
+    }
     
     public void FloodSameColor(int sx, int sy, EBubbleColor color, List<(int,int)> outList)
     {
@@ -316,14 +330,15 @@ public class BubbleGrid : MonoBehaviour
 
     public void ClearAllBubbles()
     {
+        Vector2 gridCenter = CellToWorld(mWidth / 2, mHeight / 2);
+
         for (int y = 0; y < mHeight; y++)
         {
             for (int x = 0; x < mWidth; x++)
             {
                 if (mCells[x, y] != null)
                 {
-                    Destroy(mCells[x, y].gameObject);
-                    mCells[x, y] = null;
+                    mCells[x, y].DetachFromGrid(true, gridCenter);
                 }
             }
         }

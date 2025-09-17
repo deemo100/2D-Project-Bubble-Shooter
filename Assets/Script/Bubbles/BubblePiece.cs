@@ -35,6 +35,14 @@ public class BubblePiece : MonoBehaviour
     
     public EBubbleColor Color => mColor;
     public EBubbleState State => mState;
+    public bool IsBomb = false;
+    public bool IsRocket = false;
+
+    public void SetAsRocket()
+    {
+        IsRocket = true;
+        GetComponent<CircleCollider2D>().isTrigger = true; // 트리거로 설정하여 관통 가능하게 함
+    }
     
     
     public void SetColor(EBubbleColor color)
@@ -101,7 +109,7 @@ public class BubblePiece : MonoBehaviour
             // 폭발 연출: 클러스터 중심으로부터 바깥으로 흩어지는 힘을 가합니다.
             if (clusterCenter.HasValue)
             {
-                Vector2 direction = ((Vector2)transform.position - clusterCenter.Value).normalized;
+                Vector2 direction = (((Vector2)transform.position - clusterCenter.Value).normalized + Vector2.up * 0.5f).normalized;
                 // 버블이 정확히 중심에 있을 경우, 임의의 방향으로 힘을 줍니다.
                 if (direction.sqrMagnitude < 0.001f)
                 {
@@ -137,6 +145,24 @@ public class BubblePiece : MonoBehaviour
     // 레킹 판정 가드 추가
     private void OnCollisionEnter2D(Collision2D c)
     {
+        // 로켓 버블이 벽과 충돌했을 때만 처리
+        if (IsRocket)
+        {
+            var otherBubble = c.collider.GetComponent<BubblePiece>();
+            if (otherBubble == null) // 버블이 아닌 다른 오브젝트(벽 등)와 충돌
+            {
+                // 충돌한 오브젝트의 레이어가 'Wall' 레이어인지 확인
+                if (c.gameObject.layer == LayerMask.NameToLayer("Wall"))
+                {
+                    Destroy(gameObject); // 로켓 자신을 파괴
+                    return;
+                }
+            }
+            // 로켓은 버블과 충돌 시 트리거로 처리되므로, 이 부분은 실행되지 않음
+            // 만약 여기에 도달했다면, 로켓이 버블과 비트리거 충돌한 경우인데, 이는 의도치 않은 동작
+        }
+
+        // 일반 버블 또는 로켓이 아닌 버블의 충돌 처리 (기존 로직)
         var other = c.collider.GetComponent<BubblePiece>();
         if (other == null) return;
 
@@ -156,6 +182,21 @@ public class BubblePiece : MonoBehaviour
         {
             if (other.mbBoundToGrid) other.DetachFromGrid();
             GridConnectivityCheckAfterWreck();
+        }
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        // 로켓 버블이 다른 버블을 관통하며 터뜨리는 처리
+        if (IsRocket)
+        {
+            var otherBubble = other.GetComponent<BubblePiece>();
+            if (otherBubble != null)
+            {
+                // 충돌한 버블을 터뜨립니다.
+                otherBubble.DetachFromGrid(true);
+                // 로켓은 계속 진행합니다. (Destroy(gameObject) 호출 안 함)
+            }
         }
     }
 
@@ -194,11 +235,71 @@ public class BubblePiece : MonoBehaviour
         if (grid.TryPlace(this, x, y))
         {
             OnResolved?.Invoke();
-            // 매치3 검사
+
+            if (IsBomb)
+            {
+                Debug.Log("Bomb landed! Detonating with wider range...");
+                var cellsToPop = new System.Collections.Generic.HashSet<(int, int)>();
+                var ring1_neighbors = new System.Collections.Generic.List<(int, int)>();
+                var ring2_neighbors = new System.Collections.Generic.List<(int, int)>();
+
+                // 1. 폭탄 자신의 셀 추가
+                cellsToPop.Add((x, y));
+
+                // 2. 1차 이웃들 추가
+                grid.GetAllNeighbors(x, y, ring1_neighbors);
+                foreach (var neighbor in ring1_neighbors)
+                {
+                    cellsToPop.Add(neighbor);
+                }
+
+                // 3. 2차 이웃들(1차 이웃의 이웃들) 추가
+                foreach (var neighbor in ring1_neighbors)
+                {
+                    grid.GetAllNeighbors(neighbor.Item1, neighbor.Item2, ring2_neighbors);
+                    foreach (var neighbor_of_neighbor in ring2_neighbors)
+                    {
+                        cellsToPop.Add(neighbor_of_neighbor);
+                    }
+                }
+
+                Vector2 bombPosition = grid.CellToWorld(x, y);
+
+                foreach (var cell in cellsToPop)
+                {
+                    var bp = grid.Get(cell.Item1, cell.Item2);
+                    if (bp != null)
+                    {
+                        bp.DetachFromGrid(true, bombPosition);
+                    }
+                }
+
+                ScoreEventBus.Publish(new SScoreParams { Type = EScoreEventType.Pop, Count = cellsToPop.Count, Combo = 0 });
+                GridConnectivityCheckAfterWreck();
+
+                // 폭탄을 사용했으므로 연속 팝 카운트는 초기화
+                if (GameLoopManager.Instance != null)
+                {
+                    GameLoopManager.Instance.RecordPop(false);
+                }
+                return; // 폭탄 로직 후 일반 로직 실행 방지
+            }
+
+            // --- 일반 버블 로직 ---
             var same = new System.Collections.Generic.List<(int,int)>();
             grid.FloodSameColor(x, y, mColor, same);
-            if (same.Count >= 3)
+
+            bool didPop = same.Count >= 3;
+
+            if (didPop)
             {
+                // 6개 이상 터뜨렸을 때 로켓 아이템 지급
+                if (same.Count >= 6)
+                {
+                    Debug.Log("6+ pop! Rocket awarded.");
+                    if (ItemManager.Instance != null) ItemManager.Instance.AddItem(EItemType.Rocket);
+                }
+
                 // 1. 폭발 중심점 계산
                 Vector2 clusterCenter = Vector2.zero;
                 foreach (var c in same)
@@ -220,6 +321,12 @@ public class BubblePiece : MonoBehaviour
 
                 // Pop 후 연결성 검사로 낙하 처리
                 GridConnectivityCheckAfterWreck();
+            }
+            
+            // 연속 팝 기록
+            if (GameLoopManager.Instance != null)
+            {
+                GameLoopManager.Instance.RecordPop(didPop);
             }
         }
         else
