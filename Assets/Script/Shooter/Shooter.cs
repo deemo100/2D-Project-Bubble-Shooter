@@ -34,6 +34,8 @@ public class Shooter : MonoBehaviour
         OnBubbleQueueChanged?.Invoke();
     }
     
+    private bool m_isShotInProgress = false;
+
     private void Update()
     {
         if (mGameLoopManager != null && mGameLoopManager.IsGameOver)
@@ -41,9 +43,12 @@ public class Shooter : MonoBehaviour
             return;
         }
 
-        if (Input.GetMouseButtonDown(0))
+        // 샷이 진행 중이 아닐 때만 발사 가능
+        if (!m_isShotInProgress && Input.GetMouseButtonDown(0))
         {
             if (mBubbleQueue.Count == 0) return;
+
+            m_isShotInProgress = true; // 발사 시작, 플래그 설정
 
             var go = Instantiate(mPrefab, transform.position, Quaternion.identity);
             var piece = go.GetComponentInChildren<BubblePiece>();
@@ -51,8 +56,18 @@ public class Shooter : MonoBehaviour
             {
                 Debug.LogError("BubblePiece가 프리팹(또는 자식)에 없습니다.");
                 Destroy(go);
+                m_isShotInProgress = false; // 발사 실패, 플래그 리셋
                 return;
             }
+
+            // C#의 클로저(closure) 기능을 사용하여, 생성된 piece 인스턴스에 대한 이벤트 핸들러를 등록합니다.
+            // 이렇게 하면 여러 버블이 있어도 정확히 해당 버블의 OnResolved 이벤트에만 반응할 수 있습니다.
+            System.Action onResolvedHandler = null;
+            onResolvedHandler = () => {
+                m_isShotInProgress = false;
+                piece.OnResolved -= onResolvedHandler; // 이벤트 구독 해제 (메모리 누수 방지)
+            };
+            piece.OnResolved += onResolvedHandler;
 
             // 1. 대기열의 첫 버블 색상 사용
             piece.SetColor(CurrentBubbleColor);

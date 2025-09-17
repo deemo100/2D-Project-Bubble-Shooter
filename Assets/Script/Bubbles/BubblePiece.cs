@@ -7,6 +7,8 @@ using UnityEngine;
 
 public class BubblePiece : MonoBehaviour
 {
+    public event System.Action OnResolved;
+
     [SerializeField] private EBubbleColor mColor;
     [SerializeField] private SpriteRenderer mRenderer; // <- 인스펙터에 연결 (없으면 GetComponent)
     
@@ -79,7 +81,7 @@ public class BubblePiece : MonoBehaviour
         transform.position = grid.CellToWorld(x, y);
     }
 
-    public void DetachFromGrid()
+    public void DetachFromGrid(bool isPopped = false, Vector2? clusterCenter = null)
     {
         if (!mbBoundToGrid) return;
         mbBoundToGrid = false;
@@ -87,6 +89,33 @@ public class BubblePiece : MonoBehaviour
         mState = EBubbleState.Falling;
         SetPhysicsEnabled(true);
         mRb.gravityScale = 1f;        // 낙하시 중력 1
+
+        if (isPopped)
+        {
+            // 터져서 떨어지는 버블은 다른 버블을 통과하도록 트리거로 만듭니다.
+            GetComponent<CircleCollider2D>().isTrigger = true;
+
+            // 렌더링 순서를 높여 다른 버블보다 앞에 보이게 합니다.
+            if (mRenderer) mRenderer.sortingOrder = 1;
+
+            // 폭발 연출: 클러스터 중심으로부터 바깥으로 흩어지는 힘을 가합니다.
+            if (clusterCenter.HasValue)
+            {
+                Vector2 direction = ((Vector2)transform.position - clusterCenter.Value).normalized;
+                // 버블이 정확히 중심에 있을 경우, 임의의 방향으로 힘을 줍니다.
+                if (direction.sqrMagnitude < 0.001f)
+                {
+                    direction = Random.insideUnitCircle.normalized;
+                }
+
+                // 이 값들은 인스펙터에서 조절 가능하게 만들거나, 테스트하며 튜닝할 수 있습니다.
+                float scatterForce = 2.5f;
+                float randomTorque = 10f;
+
+                mRb.AddForce(direction * scatterForce, ForceMode2D.Impulse);
+                mRb.AddTorque(Random.Range(-randomTorque, randomTorque));
+            }
+        }
     }
 
     public void SetDynamicForShot(Vector2 velocity)
@@ -164,15 +193,28 @@ public class BubblePiece : MonoBehaviour
     {
         if (grid.TryPlace(this, x, y))
         {
+            OnResolved?.Invoke();
             // 매치3 검사
             var same = new System.Collections.Generic.List<(int,int)>();
             grid.FloodSameColor(x, y, mColor, same);
             if (same.Count >= 3)
             {
+                // 1. 폭발 중심점 계산
+                Vector2 clusterCenter = Vector2.zero;
+                foreach (var c in same)
+                {
+                    clusterCenter += grid.CellToWorld(c.Item1, c.Item2);
+                }
+                clusterCenter /= same.Count;
+
+                // 2. 각 버블을 폭발 중심으로부터 흩어지게 함
                 foreach (var c in same)
                 {
                     var bp = grid.Get(c.Item1, c.Item2);
-                    if (bp != null) bp.Pop();
+                    if (bp != null)
+                    {
+                        bp.DetachFromGrid(true, clusterCenter);
+                    }
                 }
                 ScoreEventBus.Publish(new SScoreParams { Type = EScoreEventType.Pop, Count = same.Count, Combo = 0 });
 
@@ -191,5 +233,10 @@ public class BubblePiece : MonoBehaviour
         // 비주얼/사운드 후 파괴
         mGrid.RemoveAt(mX, mY);
         Destroy(gameObject);
+    }
+
+    private void OnDestroy()
+    {
+        OnResolved?.Invoke();
     }
 }
