@@ -344,6 +344,33 @@ public class BubbleGrid : MonoBehaviour
         }
     }
     
+    public void GridConnectivityCheckAfterWreck()
+    {
+        var disconnected = new System.Collections.Generic.List<(int,int)>();
+        CollectDisconnected(disconnected);
+
+        int dropCount = 0;
+        foreach (var cell in disconnected)
+        {
+            var bp = Get(cell.Item1, cell.Item2);
+            if (bp != null)
+            {
+                bp.DetachFromGrid();
+                dropCount++;
+            }
+        }
+
+        if (dropCount > 0)
+        {
+            ScoreEventBus.Publish(new SScoreParams
+            {
+                Type = EScoreEventType.Drop,
+                Count = dropCount,
+                Combo = 0 // 콤보는 ScoreManager가 갱신
+            });
+        }
+    }
+    
 #if UNITY_EDITOR
     private void OnDrawGizmos()
     {

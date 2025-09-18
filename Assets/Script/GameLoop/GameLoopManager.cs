@@ -4,6 +4,8 @@ public class GameLoopManager : MonoBehaviour
 {
     public static GameLoopManager Instance { get; private set; }
 
+    public event System.Action OnGameOver;
+
     public enum EGameState
     {
         Playing,
@@ -20,6 +22,8 @@ public class GameLoopManager : MonoBehaviour
     private int mConsecutivePops = 0;
 
     public bool IsGameOver => mState == EGameState.GameOver;
+    public int TurnsPerDrop => mTurnsPerDrop;
+    public int TurnsTaken => mTurnsTaken;
 
     private void Awake()
     {
@@ -131,6 +135,6 @@ public class GameLoopManager : MonoBehaviour
             mGrid.ClearAllBubbles();
         }
         
-        // 여기에 나중에 게임오버 UI를 표시하는 로직을 추가할 수 있습니다.
+        OnGameOver?.Invoke();
     }
 }

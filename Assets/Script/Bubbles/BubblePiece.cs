@@ -181,7 +181,7 @@ public class BubblePiece : MonoBehaviour
         if (rel >= mWreckBreakSpeed)
         {
             if (other.mbBoundToGrid) other.DetachFromGrid();
-            GridConnectivityCheckAfterWreck();
+            if (mGrid != null) mGrid.GridConnectivityCheckAfterWreck();
         }
     }
 
@@ -197,35 +197,6 @@ public class BubblePiece : MonoBehaviour
                 otherBubble.DetachFromGrid(true);
                 // 로켓은 계속 진행합니다. (Destroy(gameObject) 호출 안 함)
             }
-        }
-    }
-
-    private void GridConnectivityCheckAfterWreck()
-    {
-        if (mGrid == null) return;
-
-        var disconnected = new System.Collections.Generic.List<(int,int)>();
-        mGrid.CollectDisconnected(disconnected);
-
-        int dropCount = 0;
-        foreach (var cell in disconnected)
-        {
-            var bp = mGrid.Get(cell.Item1, cell.Item2);
-            if (bp != null)
-            {
-                bp.DetachFromGrid();
-                dropCount++;
-            }
-        }
-
-        if (dropCount > 0)
-        {
-            ScoreEventBus.Publish(new SScoreParams
-            {
-                Type = EScoreEventType.Drop,
-                Count = dropCount,
-                Combo = 0 // 콤보는 ScoreManager가 갱신
-            });
         }
     }
 
@@ -275,7 +246,7 @@ public class BubblePiece : MonoBehaviour
                 }
 
                 ScoreEventBus.Publish(new SScoreParams { Type = EScoreEventType.Pop, Count = cellsToPop.Count, Combo = 0 });
-                GridConnectivityCheckAfterWreck();
+                grid.GridConnectivityCheckAfterWreck();
 
                 // 폭탄을 사용했으므로 연속 팝 카운트는 초기화
                 if (GameLoopManager.Instance != null)
@@ -320,7 +291,7 @@ public class BubblePiece : MonoBehaviour
                 ScoreEventBus.Publish(new SScoreParams { Type = EScoreEventType.Pop, Count = same.Count, Combo = 0 });
 
                 // Pop 후 연결성 검사로 낙하 처리
-                GridConnectivityCheckAfterWreck();
+                grid.GridConnectivityCheckAfterWreck();
             }
             
             // 연속 팝 기록
@@ -344,6 +315,25 @@ public class BubblePiece : MonoBehaviour
 
     private void OnDestroy()
     {
+        // 로켓이 파괴될 때(예: 벽에 부딪혔을 때) 연결성 검사를 수행합니다.
+        // 이렇게 하면 로켓으로 인해 연결이 끊어진 버블들이 즉시 떨어집니다.
+        if (IsRocket)
+        {
+            // mGrid는 발사된 버블에 바인딩되어 있지 않으므로, 씬에서 직접 찾아야 합니다.
+            #if UNITY_2023_1_OR_NEWER
+            var grid = FindAnyObjectByType<BubbleGrid>();
+            #else
+            var grid = FindObjectOfType<BubbleGrid>();
+            #endif
+            
+            if (grid != null)
+            {
+                // 로켓의 OnTriggerEnter2D에서 버블들이 제거된 후,
+                // 남아있는 버블들의 연결 상태를 검사합니다.
+                grid.GridConnectivityCheckAfterWreck();
+            }
+        }
+        
         OnResolved?.Invoke();
     }
 }
