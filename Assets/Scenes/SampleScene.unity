@@ -2038,6 +2038,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mGrid: {fileID: 2124340653}
   mPrefab: {fileID: 1054682183626244954, guid: 0393b38169c646546bde9ad04375f89e, type: 3}
+  mLevelData: {fileID: 4900000, guid: 2a00e2e537ff62747889ab1788bed1f1, type: 3}
+  mColorPalette:
+  - character: 82
+    color: 0
+  - character: 66
+    color: 1
+  - character: 71
+    color: 2
+  - character: 89
+    color: 3
+  - character: 80
+    color: 4
+  - character: 79
+    color: 5
+  - character: 83
+    color: 6
   mRows: 5
   mSpawnColors: 0000000001000000020000000300000004000000
 --- !u!4 &857302037
@@ -3636,6 +3652,7 @@ MonoBehaviour:
   mOrigin: {x: -7.86, y: 4.06}
   mGameLoopManager: {fileID: 1971637066}
   mGameOverRow: 11
+  mStoneSpawnChance: 0.2
   mbRowZeroOdd: 1
   mBubblePrefab: {fileID: 1054682183626244954, guid: 0393b38169c646546bde9ad04375f89e, type: 3}
 --- !u!156049354 &2124340654

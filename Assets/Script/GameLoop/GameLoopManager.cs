@@ -24,6 +24,7 @@ public class GameLoopManager : MonoBehaviour
     public bool IsGameOver => mState == EGameState.GameOver;
     public int TurnsPerDrop => mTurnsPerDrop;
     public int TurnsTaken => mTurnsTaken;
+    public int TotalTurns { get; private set; }
 
     private void Awake()
     {
@@ -35,6 +36,7 @@ public class GameLoopManager : MonoBehaviour
         {
             Instance = this;
         }
+        TotalTurns = 0;
     }
 
     private void Start()
@@ -58,6 +60,7 @@ public class GameLoopManager : MonoBehaviour
         if (IsGameOver) return;
 
         mTurnsTaken++;
+        TotalTurns++; // 전체 턴 수 증가
         if (mTurnsTaken >= mTurnsPerDrop)
         {
             mTurnsTaken = 0;

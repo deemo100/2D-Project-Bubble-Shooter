@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 #if UNITY_EDITOR
@@ -31,6 +32,7 @@ public class BubbleGrid : MonoBehaviour
     [Header("Game Loop")]
     [SerializeField] private GameLoopManager mGameLoopManager;
     [SerializeField] private int mGameOverRow = 11; // 12번째 줄
+    [SerializeField, Range(0f, 1f)] private float mStoneSpawnChance = 0.2f; // 5턴 이후 Stone 버블 스폰 확률
 
     // row 0이 홀수 오프셋인지 여부 (false: 짝수 기준, true: 홀수 기준)
     [SerializeField] private bool mbRowZeroOdd = false;
@@ -321,8 +323,33 @@ public class BubbleGrid : MonoBehaviour
                 continue;
             }
 
-            var color = (EBubbleColor)UnityEngine.Random.Range(0, 4);
-            piece.SetColor(color);
+            EBubbleColor newColor;
+            // 5턴 이상 진행되었고, 랜덤 확률에 당첨되면 Stone 버블 생성
+            if (mGameLoopManager != null && mGameLoopManager.TotalTurns >= 5 && UnityEngine.Random.value < mStoneSpawnChance)
+            {
+                newColor = EBubbleColor.Stone;
+            }
+            else
+            {
+                // 그렇지 않으면 플레이 가능한 색상 중 하나를 랜덤으로 선택
+                var available = new System.Collections.Generic.HashSet<EBubbleColor>();
+                CollectColorsPresent(available);
+                available.Remove(EBubbleColor.Stone);
+
+                if (available.Count > 0)
+                {
+                    newColor = available.ElementAt(UnityEngine.Random.Range(0, available.Count));
+                }
+                else
+                {
+                    // 플레이 가능한 색이 없으면 기본 색상 중 선택
+                    var fallbackColors = new System.Collections.Generic.List<EBubbleColor> 
+                        { EBubbleColor.Red, EBubbleColor.Blue, EBubbleColor.Green, EBubbleColor.Yellow };
+                    newColor = fallbackColors[UnityEngine.Random.Range(0, fallbackColors.Count)];
+                }
+            }
+            
+            piece.SetColor(newColor);
             mCells[x, 0] = piece;
             piece.BindGrid(this, x, 0);
         }

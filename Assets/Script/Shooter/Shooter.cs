@@ -200,11 +200,18 @@ public class Shooter : MonoBehaviour
     {
         var available = new HashSet<EBubbleColor>();
         mGrid.CollectColorsPresent(available);
+        available.Remove(EBubbleColor.Stone); // 발사할 색상에서 Stone(장애물)은 제외
+
         if (available.Count > 0)
         {
             int idx = UnityEngine.Random.Range(0, available.Count);
             return available.ElementAt(idx);
         }
-        return (EBubbleColor)UnityEngine.Random.Range(0, System.Enum.GetValues(typeof(EBubbleColor)).Length);
+
+        // 그리드에 플레이 가능한 색이 하나도 없을 경우(예: Stone 버블만 남은 경우) 대비
+        // 기본 색상들 중에서 랜덤으로 하나를 선택하여 발사
+        var fallbackColors = new List<EBubbleColor> 
+            { EBubbleColor.Red, EBubbleColor.Blue, EBubbleColor.Green, EBubbleColor.Yellow };
+        return fallbackColors[UnityEngine.Random.Range(0, fallbackColors.Count)];
     }
 }

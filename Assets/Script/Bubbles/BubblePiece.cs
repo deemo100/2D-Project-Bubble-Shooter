@@ -69,6 +69,7 @@ public class BubblePiece : MonoBehaviour
             case EBubbleColor.Yellow: return new Color(0.98f, 0.90f, 0.25f);
             case EBubbleColor.Purple: return new Color(0.70f, 0.45f, 0.95f);
             case EBubbleColor.Orange: return new Color(0.98f, 0.60f, 0.20f);
+            case EBubbleColor.Stone:  return new Color(0.5f, 0.5f, 0.5f); // Stone 색상은 회색
             default:                  return new Color(1, 1, 1);
         }
     }
@@ -257,6 +258,9 @@ public class BubblePiece : MonoBehaviour
             }
 
             // --- 일반 버블 로직 ---
+            // 자기 자신은 Stone 타입이 아니므로, 색상 매칭 검사만 수행
+            if (mColor == EBubbleColor.Stone) return;
+
             var same = new System.Collections.Generic.List<(int,int)>();
             grid.FloodSameColor(x, y, mColor, same);
 
@@ -264,6 +268,31 @@ public class BubblePiece : MonoBehaviour
 
             if (didPop)
             {
+                // --- 장애물 버블 변신 로직 ---
+                var neighborsOfPoppedCluster = new System.Collections.Generic.HashSet<(int, int)>();
+                var individualNeighbors = new System.Collections.Generic.List<(int, int)>();
+                foreach (var poppedCell in same)
+                {
+                    grid.GetAllNeighbors(poppedCell.Item1, poppedCell.Item2, individualNeighbors);
+                    foreach (var neighbor in individualNeighbors)
+                    {
+                        neighborsOfPoppedCluster.Add(neighbor);
+                    }
+                }
+
+                EBubbleColor poppedColor = mColor; // 터진 버블들의 색상
+
+                foreach (var neighborCell in neighborsOfPoppedCluster)
+                {
+                    var neighborPiece = grid.Get(neighborCell.Item1, neighborCell.Item2);
+                    // 이웃이 Stone 버블이면, 터진 버블의 색상으로 변신시킴
+                    if (neighborPiece != null && neighborPiece.Color == EBubbleColor.Stone)
+                    {
+                        neighborPiece.SetColor(poppedColor);
+                    }
+                }
+                // --- 변신 로직 끝 ---
+
                 // 6개 이상 터뜨렸을 때 로켓 아이템 지급
                 if (same.Count >= 6)
                 {
